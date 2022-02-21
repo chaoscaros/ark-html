@@ -136,7 +136,7 @@
               <el-row class="demo-autocomplete">
                 <el-col>
                   <el-input v-model="code" style="max-width: 150px" placeholder="Code" prefix-icon="el-icon-lock" />
-                  <el-button type="success" v-show="isShow" @click="GetSMSCode" plain style="width: 110px">获取验证码</el-button>
+                  <el-button type="success" v-show="isShow" @click="SendSmsCode" plain style="width: 110px">获取验证码</el-button>
                   <el-button type="success" v-show="!isShow" plain style="width: 110px" disabled>{{ Codetime }}秒后重发</el-button>
                 </el-col>
               </el-row>
@@ -159,7 +159,7 @@
                   </el-select>
                 </el-col>
               </el-row>
-              <el-button type="primary" size="medium" round @click="Login">登录</el-button>
+              <el-button type="primary" size="medium" round @click="jdLogin">登录</el-button>
             </el-tab-pane>
             <el-tab-pane label="WSKEY" name="WSKEY" :disabled="uploadtype !== 'ql'">
               <el-row class="demo-autocomplete">
@@ -419,7 +419,7 @@ import $ from 'jquery'
 
 import { ElMessage, ElNotification } from 'element-plus'
 import '@/assets/slidercaptch.js'
-import { getConfigMain, getQLConfig, SendSMS, VerifyCode, AutoCaptcha, VerifyCaptcha, VerifyCaptcha2, UploadWSKEY, CKLoginAPI } from '@/api/index'
+import { getConfigMain, getQLConfig, SendSMS, jdLogins, VerifyCode, AutoCaptcha, VerifyCaptcha, VerifyCaptcha2, UploadWSKEY, CKLoginAPI, smsCode } from '@/api/index'
 import Clipboard from 'clipboard'
 export default {
   setup() {
@@ -614,11 +614,41 @@ export default {
         ElMessage.error('cookie 解析失败，请检查后重试！')
       }
     }
-    const Login = async () => {
-      console.log(data.getCode)
+    const jdLogin = async () => {
       if (!data.code) ElMessage.error('请先输入验证码')
       if (!data.phone) ElMessage.error('请先输入手机')
-      if (!data.getCode) ElMessage.error('请先获取验证码')
+      const loading = ElLoading.service({
+        lock: true,
+        text: '正在登陆'
+      })
+      const body = await jdLogins({
+        mobile: data.phone,
+        code: data.code
+      })
+      loading.close()
+      if (body.msg.indexOf('获取cookie成功') != -1) {
+        let cookie = body['data']['cookie']
+        const ptKey = cookie.match(/pt_key=(.*?);/) && cookie.match(/pt_key=(.*?);/)[1]
+        const ptPin = cookie.match(/pt_pin=(.*?);/) && cookie.match(/pt_pin=(.*?);/)[1]
+        if (ptKey && ptPin) {
+          const body = await CKLoginAPI({ pt_key: ptKey, pt_pin: ptPin })
+          if (body.data.eid) {
+            localStorage.setItem('qlid', body.data.eid)
+            localStorage.setItem('qlkey', data.optionsvlue)
+            ElMessage.success(body.message)
+            router.push('/')
+          } else {
+            ElMessage.error(body.message || 'cookie 解析失败，请检查后重试！')
+          }
+        } else {
+          ElMessage.error('cookie 解析失败，请检查后重试！')
+        }
+      }
+    }
+    const Login = async () => {
+      if (!data.code) ElMessage.error('请先输入验证码')
+      if (!data.phone) ElMessage.error('请先输入手机')
+      // if (!data.getCode) ElMessage.error('请先获取验证码')
       if (!data.QQ && data.uploadtype == 'xdd') ElMessage.error('请先获取QQ')
       const loading = ElLoading.service({
         lock: true,
@@ -678,7 +708,51 @@ export default {
         }
       }, 1000)
     }
+    const SMSTIME2 = () => {
+      data.isShow = false
+      data.getCode = true
+      let timer2 = setInterval(function () {
+        data.Codetime--
+        if (data.Codetime <= 0) {
+          clearInterval(timer2)
+          data.isShow = true
+        }
+      }, 1000)
+    }
 
+    const SendSmsCode = async () => {
+      if (data.phone == '') {
+        ElMessage.error('请输入手机号码')
+        return false
+      }
+      var re = /^1\d{10}$/
+      var res = re.test(data.phone)
+      if (!res) {
+        ElMessage.error('手机号错误')
+        return false
+      }
+      const loading = ElLoading.service({
+        lock: true,
+        text: '正在获取验证码'
+      })
+      data.marginCount = 1
+      data.times = data.ctime * 60
+      data.Codetime = 60
+      data.oldphone = data.phone
+      data.First = false
+      const body = await smsCode({
+        mobile: data.phone
+        // qlkey: data.optionsvlue
+      })
+      let timer = setInterval(function () {
+        data.times--
+        if (data.times <= 0) {
+          clearInterval(timer)
+        }
+      }, 1000)
+      SMSTIME2()
+      loading.close()
+    }
     const GetSMSCode = async () => {
       if (data.phone == '') {
         ElMessage.error('请输入手机号码')
@@ -713,7 +787,7 @@ export default {
           Phone: data.phone,
           qlkey: data.optionsvlue
         })
-        if (body.success == true || body.data.status == 666) {
+        if (body.msg == true || body.data.status == 666) {
           let timer = setInterval(function () {
             data.times--
             if (data.times <= 0) {
@@ -842,9 +916,11 @@ export default {
       UploadWSKEYS,
       CKLogin,
       GetSMSCode,
+      SendSmsCode,
       valuechange,
       captchaTipclick,
-      cap2click
+      cap2click,
+      jdLogin
     }
   }
 }

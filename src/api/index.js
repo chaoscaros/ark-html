@@ -1,4 +1,8 @@
 import ky from 'ky'
+import Request from "../utils/Request"
+
+let httptest = "http://101.35.190.155:1170"
+
 let httpRoute = `${location.protocol}//${location.hostname}`
 const VUE_APP_BASE_API = process.env.VUE_APP_BASE_API || '/api';
 
@@ -55,4 +59,22 @@ export function delAccountAPI(body) {
 
 export function CKLoginAPI(body) {
   return axios.post('cklogin', { json: body }).json()
+}
+
+export async function smsCode(data) {
+  let res = await Request({
+    url: `${httptest}/jd/smsCode`,
+    method: 'get',
+    params: data
+  })
+  return res
+}
+
+export async function jdLogins(data) {
+  let res = await Request({
+    url: `${httptest}/jd/login`,
+    method: 'get',
+    params: data
+  })
+  return res
 }
